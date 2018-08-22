@@ -35,6 +35,7 @@ This guide introduces how to submit deep learning frameworks by framework launch
 ## Simple Tensorflow Framework Example <a name="simpletf"></a>
 
 To submit a Tensorflow Framework, you need to prepare a job configuration file and post it to APIServer.
+
 `POST to http://{ApiServerAddress}/apis/launcher.microsoft.com/v1/namespaces/default/frameworks`
 
 Here's one configuration file example:
