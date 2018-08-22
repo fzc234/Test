@@ -26,6 +26,8 @@ This guide introduces how to submit deep learning frameworks by framework launch
 - [Simple Tensorflow Framework Example](#simpletf)
 - [Tensorflow Framework Example with Pod Initialization and Supporting Volumes](#tfinitvolume)
   - [Create a Pod that has an Init Container](#initcontainer)
+    - [Configure Docker Image for Init Container](#dockerimginitcontainer)
+    - [Configure a Pod with Init Container](#podinitcontainer)
   - [Configure a Pod to Use NFS Volume](#nfsvolume)
     - [Set up a NFS Server](#nfsserver)
     - [Mount on NFS Volume](#nfsmount)
@@ -38,7 +40,7 @@ To submit a Tensorflow Framework, you need to prepare a job configuration file a
 
 `POST to http://{ApiServerAddress}/apis/launcher.microsoft.com/v1/namespaces/default/frameworks`
 
-Here's one configuration file example:
+Here is one sample Tensorflow Framework configuration file:
 
 ```yaml
 apiVersion: launcher.microsoft.com/v1
@@ -66,11 +68,12 @@ spec:
             restartPolicy: Never
             containers:
               - name: tf
-                image: "zichengfang/k8s_launcher:test4"
+                image: "zichengfang/k8s_launcher:distributedtf"
                 ports:
                 - containerPort: 49866
                 workingDir: /benchmarks/scripts/tf_cnn_benchmarks
                 command: ["/bin/bash","-c","export framework_name=tf-example && source ./get_ips.sh && python tf_cnn_benchmarks.py --batch_size=32 --model=alexnet --local_parameter_device=cpu --variable_update=parameter_server --ps_hosts=$ps_hosts:49867 --worker_hosts=$worker_hosts:49866 --job_name=worker --task_index=0 --data_name=cifar10 --data_dir=./data/cifar-10-batches-py/ --data_format=NHWC"]
+            hostNetwork: true
     - name: ps
       taskNumber: 1
       frameworkAttemptCompletionPolicy:
@@ -85,9 +88,174 @@ spec:
             restartPolicy: Never
             containers:
               - name: tf
-                image: "zichengfang/k8s_launcher:test4"
+                image: "zichengfang/k8s_launcher:distributedtf"
                 ports:
                 - containerPort: 49867
                 workingDir: /benchmarks/scripts/tf_cnn_benchmarks
                 command: ["/bin/bash","-c","export framework_name=tf-example && source ./get_ips.sh && python tf_cnn_benchmarks.py --batch_size=32 --model=alexnet --local_parameter_device=cpu --variable_update=parameter_server --ps_hosts=$ps_hosts:49867 --worker_hosts=$worker_hosts:49866 --job_name=ps --task_index=0 --data_name=cifar10"]
+            hostNetwork: true
+```
+
+*Note you need to set hostNetwork: true if you use hotsNetwork.*
+
+## Tensorflow Framework Example with Pod Initialization and Supporting Volumes <a name="tfinitvolume"></a>
+
+### Create a Pod that has an Init Container <a name="initcontainer"></a>
+
+In this example you create a Pod that has one application Container and one Init Container. The init container runs to completion before the application container starts. The init container in our example write worker and ps hostIP into a configure file, and the application container can read this file (we will introduce how to use volume to write and read config file in later part).
+
+#### Configure Docker Image for Init Container <a name="dockerimginitcontainer"></a>
+
+You need to build an image for Init Container.
+
+Here is the Dockerfile:
+
+```dockerfile
+FROM ubuntu:16.04
+
+# Install CURL
+RUN apt-get update
+RUN apt-get install -y curl
+
+# Install kubectl v1.10.0
+RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.10.0/bin/linux/amd64/kubectl && chmod +x ./kubectl && mv ./kubectl /usr/local/bin/kubectl
+
+# Copy kubectl config file
+COPY kubectlconfig .
+
+# Copy get_ips.sh
+COPY get_ips.sh .
+```
+Here is exmaple of kubectlconfid:
+
+```
+apiVersion: v1
+clusters:
+- cluster:
+    insecure-skip-tls-verify: true
+    server: {YourKubernetesAPIServerAddress}
+  name: test
+contexts:
+- context:
+    cluster: example
+    user: example
+  name: example
+current-context: example
+kind: Config
+preferences: {}
+users:
+- name: exampleuser
+  user:
+    password: {Password}
+    username: {Username}
+```
+
+You can check [get_ips.sh](./example/buildInitContainerImage/get_ips.sh).
+
+Then, you can build the image by
+
+```bash
+$ docker build -t yourInitConatinerImageName:version .
+```
+
+Then, you need push this image to Dockerhub:
+
+```bash
+$ docker push yourInitConatinerImageName:version
+```
+
+#### Configure a Pod with Init Container <a name="podinitcontainer"></a>
+
+Now you have already built your Init Conatiner Image. You need to configure pod to use Init Container.
+
+Here is the configuration file for the Pod:
+
+```yaml
+apiVersion: launcher.microsoft.com/v1
+kind: Framework
+metadata:
+  name: tf-example
+spec:
+  description: "tf example"
+  executionType: Start
+  retryPolicy:
+    fancyRetryPolicy: false
+    maxRetryCount: 3
+  taskRoles:
+    - name: worker
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: tf
+                # image: yourtensorflowjobimage:version
+                image: zichengfang/k8s_launcher:distributedtf     
+                ports:
+                - containerPort: 49866
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","cat /configdir/configfile"]
+                olumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            initContainers:
+              - name: initips
+                # image: yourInitConatinerImageName:version
+                image: zichengfang/k8s_initcontainer:update            
+                ports:
+                - containerPort: 49866
+                workingDir: /
+                command: ["/bin/bash","-c","export worker_tasknum=1 && export ps_tasknum=1 && export ps_port=46867 && export worker_port=46866 && source ./get_ips.sh && echo -e $worker_hosts'\n'$ps_hosts > /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            volumes:
+              - name: config-volume
+                emptyDir: {}
+            hostNetwork: true
+    - name: ps
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: tf
+                # image: yourtensorflowjobimage:version
+                image: zichengfang/k8s_launcher:distributedtf
+                ports:
+                - containerPort: 49867
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","cat /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            initContainers:
+              - name: initips
+                # image: yourInitConatinerImageName:version
+                image: zichengfang/k8s_initcontainer:update
+                ports:
+                - containerPort: 49867
+                workingDir: /
+                command: ["/bin/bash","-c","export worker_tasknum=1 && export ps_tasknum=1 && export ps_port=46867 && export worker_port=46866 && source ./get_ips.sh && echo -e $worker_hosts'\n'$ps_hosts > /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            volumes:
+              - name: config-volume
+                emptyDir: {}
+            hostNetwork: true
 ```
