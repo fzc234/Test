@@ -19,7 +19,7 @@
 
 # Framework Launcher On Kubernetes User Manual
 
-This guide introduces <i>how</i> to submit deep learning frameworks by framework launcher on K8S.
+This guide introduces how to submit deep learning frameworks by framework launcher on K8S.
 
 ## Table of Contents:
 
