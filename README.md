@@ -96,7 +96,7 @@ spec:
             hostNetwork: true
 ```
 
-*Note you need to set hostNetwork: true if you use hotsNetwork.*
+*NOTE: you need to set hostNetwork: true if you use hotsNetwork.*
 
 ## Tensorflow Framework Example with Pod Initialization and Supporting Volumes <a name="tfinitvolume"></a>
 
@@ -158,7 +158,7 @@ Then, to compile your image just run:
 $ docker build -t yourInitConatinerImageName:version .
 ```
 
-and you need push this image to Dockerhub:
+and you need to push this image to Dockerhub:
 
 ```bash
 $ docker push yourInitConatinerImageName:version
@@ -295,3 +295,65 @@ For `container`:
 * It has name `tf`
 * It mounts the same shared Volume at `/configdir` as initContainer
 * In the command part, it just run `cat /configdir/configfile`, which can read the configfile written by `initContainer`
+
+### Configure a Pod to Use NFS Volume <a name="nfsvolume"></a>
+
+In Tensorflow Framework, you will use some data. One way, you can use `NFS(Network File System)` to share your data, and an `nfs` volume allows NFS share to be mounted into your Pod. The content of an `nfs` volume are preserved even if a Pod is removed. An `nfs` volume can be prepopulated with data, and the data can be "handed off" between Pods, and one NFS can be mounted by multiple writers simultaneously.
+
+*NOTE: you must have your own NFS server running with the share exported*
+
+#### Set up a NFS Server <a name="nfsserver"></a>
+
+This part introduces how to set up a NFS server on Linux (Ubuntu 16.04)
+
+##### Step 1: Download and Install NFS Server
+
+You need to install `nfs-kernel-server` package, which will allow you to share directories.
+
+```console
+$ sudo apt-get update
+$ sudo apt-get install -y nfs-kernel-server
+```
+
+##### Step 2: Create the Share Directories
+
+You need to create a directory to be shared and mounted.
+
+```console
+$ cd /home/t-zifang
+$ mkdir nfs
+```
+
+NFS will translate any `root` operations on the client to the `nobody:nogroup` credentials as a security measure. Therefore, you need to change the directory ownership to match those credentials.
+
+```console
+$ sudo chown nobody:nogroup /home/t-zifang/nfs
+```
+
+This directory is now ready for export.
+
+##### Step 3: Configure the NFS Exports
+
+Open `/etc/exports` file in your test editor:
+
+```console
+$ sudo vi /etc/exports
+```
+
+Add the following content into the last line of exports configuration file:
+
+```console
+/home/t-zifang/nfs *(rw,sync,no_root_squash,subtree_check)
+```
+
+##### Step 4: Restart the NFS
+
+```console
+$ sudo /etc/init.d/rpcbind restart
+$ sudo /etc/init.d/nfs-kernel-server restart
+```
+
+Now you finish setting up your NFS server, you can put directories and data under shared directory `/home/t-zifang/nfs`.
+
+#### Mount on NFS Volume <a name="nfsmount"></a>
+
