@@ -102,7 +102,7 @@ spec:
 
 ### Create a Pod that has an Init Container <a name="initcontainer"></a>
 
-In this example you create a Pod that has one application Container and one Init Container. The init container runs to completion before the application container starts. The init container in our example write worker and ps hostIP into a configure file, and the application container can read this file (we will introduce how to use volume to write and read config file in later part).
+In this example you create a Pod that has one application Container and one Init Container. The init container runs to completion before the application container starts. The init container writes worker and ps hostIPs into a configure file, and the application container can read this file (we will introduce how to use volume to write and read config file in later part).
 
 #### Configure Docker Image for Init Container <a name="dockerimginitcontainer"></a>
 
@@ -158,7 +158,7 @@ Then, you can build the image by
 $ docker build -t yourInitConatinerImageName:version .
 ```
 
-Then, you need push this image to Dockerhub:
+and you need push this image to Dockerhub:
 
 ```bash
 $ docker push yourInitConatinerImageName:version
@@ -259,3 +259,9 @@ spec:
                 emptyDir: {}
             hostNetwork: true
 ```
+
+Compared to simple Tensorflow Framework configuration file, you add *taskrole.task.pod.spec.initConatiners*, *taskrole.task.pod.spec.containers.volumeMounts*, and *taskrole.task.pod.spec.volumes*. 
+
+
+
+
