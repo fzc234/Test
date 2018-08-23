@@ -286,8 +286,8 @@ For `initContainer`:
 * In the command part:
     - First, export four environment variables, which will be used by `get_ips.sh`.  
     `worker_tasknum=1`, it has 1 `worker`; `ps_tasknum=1`, it has 1 `ps`; `worker_port=46866`, the port exposed by `worker`; `ps_port=46867`, the port exposed by `ps`.
-    - Second, run `source ./get_ips.sh`, it can export `worker_hosts`, which is the list of `worker hostIP` *(exmaple:172.16.1.10:46866 and 172.16.1.10:46866,172.16.1.11:46866, if you have multiple workers)*;  
-    it can also export `ps_hosts`, which is the list of `ps hostIP` *(exmaple:172.16.1.10:46867 and 172.16.1.10:46867,172.16.1.11:46867, if you have multiple ps)*
+    - Second, run `source ./get_ips.sh`, it can export `worker_hosts`, which is the list of `worker hostIP` *(exmaple:`172.16.1.10:46866` and `172.16.1.10:46866,172.16.1.11:46866`, if you have multiple workers)*;  
+    it can also export `ps_hosts`, which is the list of `ps hostIP` *(exmaple:`172.16.1.10:46867` and `172.16.1.10:46867,172.16.1.11:46867`, if you have multiple ps)*
     - Last, the initContainer can write `$worker_hosts` and `$ps_hosts` into  `configfile` under shared Volume `/configdir`
 
 For `container`:
