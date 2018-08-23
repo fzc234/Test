@@ -264,7 +264,7 @@ Compared to simple Tensorflow Framework configuration file, you add *taskrole.ta
 
 Below please find the detailed explanation for each of the parameters of initConatiners:
 
-| initContainers                                                                                           |
+| initContainers                   |                            |                                          |
 | Field Name                       | Schema                     | Description                              |
 | :------------------------------- | :------------------------- | :--------------------------------------- |
 | `jobName`                        | String in `^[A-Za-z0-9\-._~]+$` format, required | Name for the job, need to be unique |
