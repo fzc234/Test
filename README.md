@@ -32,6 +32,8 @@ This guide introduces how to submit deep learning frameworks by framework launch
     - [Set up a NFS Server](#nfsserver)
     - [Mount on NFS Volume](#nfsmount)
   - [Configure a Pod to Use hostPath Volume](#hostpathvolume)
+    - [Single Node using hostPath](#singlenodehp)
+    - [Multiple Nodes using hostPath](#multinodehp)
 
 
 ## Simple Tensorflow Framework Example <a name="simpletf"></a>
@@ -286,8 +288,8 @@ For `initContainer`:
 * In the command part:
     - First, export four environment variables, which will be used by `get_ips.sh`.  
     `worker_tasknum=1`, it has 1 `worker`; `ps_tasknum=1`, it has 1 `ps`; `worker_port=46866`, the port exposed by `worker`; `ps_port=46867`, the port exposed by `ps`.
-    - Second, run `source ./get_ips.sh`, it can export `worker_hosts`, which is the list of `worker hostIP` *(exmaple:`172.16.1.10:46866` and `172.16.1.10:46866,172.16.1.11:46866`, if you have multiple workers)*;  
-    it can also export `ps_hosts`, which is the list of `ps hostIP` *(exmaple:`172.16.1.10:46867` and `172.16.1.10:46867,172.16.1.11:46867`, if you have multiple ps)*
+    - Second, run `source ./get_ips.sh`, it can export `worker_hosts`, which is the list of `worker hostIP` *(exmaple:172.16.1.10:46866 and 172.16.1.10:46866,172.16.1.11:46866, if you have multiple workers)*;  
+    it can also export `ps_hosts`, which is the list of `ps hostIP` *(exmaple:172.16.1.10:46867 and 172.16.1.10:46867,172.16.1.11:46867, if you have multiple ps)*
     - Last, the initContainer can write `$worker_hosts` and `$ps_hosts` into  `configfile` under shared Volume `/configdir`
 
 For `container`:
@@ -298,7 +300,7 @@ For `container`:
 
 ### Configure a Pod to Use NFS Volume <a name="nfsvolume"></a>
 
-In Tensorflow Framework, you will use some data. One way, you can use `NFS(Network File System)` to share your data, and an `nfs` volume allows NFS share to be mounted into your Pod. The content of an `nfs` volume are preserved even if a Pod is removed. An `nfs` volume can be prepopulated with data, and the data can be "handed off" between Pods, and one NFS can be mounted by multiple writers simultaneously.
+In Tensorflow Framework, you will use some files and data. One way, you can use `NFS(Network File System)` to share your data, and an `nfs` volume allows NFS share to be mounted into your Pod. The content of an `nfs` volume are preserved even if a Pod is removed. An `nfs` volume can be prepopulated with data, and the data can be "handed off" between Pods, and one NFS can be mounted by multiple writers simultaneously.
 
 *NOTE: you must have your own NFS server running with the share exported*
 
@@ -366,7 +368,7 @@ $ cd /home/t-zifang/nfs
 $ echo Hello, NFS > nfstest.txt
 ```
 
-You want to config a Pod to use `nfs` volume to mount NFS server and read `nfstest.txt`.
+You can config a Pod to use `nfs` volume to mount NFS server and read `nfstest.txt`.
 
 Here is the example how to use `nfs` volume:
 
@@ -407,8 +409,8 @@ spec:
             volumes:
               - name: nfs-volume
                 nfs:
-                server: 10.169.4.12
-                path: /home/t-zifang/nfs
+                  server: 10.169.4.12
+                  path: /home/t-zifang/nfs
             hostNetwork: true
 ```
 
@@ -422,12 +424,95 @@ Under `taskrole.task.pod.spec.volumes`:
 Under `taskrole.task.pod.spec.containers.volumeMounts`:
 
 * You configure a volumeMount name as `nfs-volume`, which must be same as the volume under `Volumes`
-* You set a mountPath as `/mnt`
+* You set a mountPath as `/mnt`, directories and files under `/home/t-zifang/nfs` can be accessed under `/mnt` in the container
 
-In container `nfstest`, you run `ls /mnt && cat /mnt/nfstest.txt`, it will print out:
+In container `nfstest`, it runs `ls /mnt && cat /mnt/nfstest.txt`, and prints out:
+
 ```console
 nfstext.txt
 Hello, NFS
 ```
 
-The directories and data under `/home/t-zifang/nfs` can be accessed under `/mnt` in the container.
+### Configure a Pod to Use hostPath Volume <a name="hostpathvolume"></a>
+
+There is another way for Tensorflow Framework to use files and data. A `hostPath` volume mounts a file or directory from the host nodes's filesystem into your Pod.
+
+#### Single Node using hostPath <a name="singlenodehp"></a>
+
+You have only one node in your cluster. For example, you create a directory `/data/hostpathdir` on your host node, and you create a `hostpathtest.txt` under `/data/hostpathdir`, and you insert some words:
+
+```console
+$ cd /data
+$ mkdir hostpathdir
+$ cd hostpathdir 
+$ echo Hello, HostPath > hostpathtest.txt
+```
+
+You can config a Pod to use `hostPath` volume to mount and read `hostpathtest.txt`.
+
+Here is the example how to use `hostPath` volume:
+
+```yaml
+apiVersion: launcher.microsoft.com/v1
+kind: Framework
+metadata:
+  name: hostpathexample
+spec:
+  description: "tf example"
+  executionType: Start
+  retryPolicy:
+    fancyRetryPolicy: false
+    maxRetryCount: 3
+  taskRoles:
+    - name: worker
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: hostpathstest
+                image: "zichengfang/k8s_launcher:distributedtf"
+                ports:
+                - containerPort: 49866
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","ls /mnt && cat /mnt/hostpathtest.txt"]
+                volumeMounts:
+                  - name: hostpath-volume
+                    mountPath: /mnt
+            volumes:
+              - name: hostpath-volume
+                hostPath:
+                  path: /data
+            hostNetwork: true
+```
+
+Under `taskrole.task.pod.spec.volumes`:
+
+* You configure a volume name as `hostpath-volume`
+* You set the volume type as `hostPath`
+* You provide the directory path on node `/data`
+
+Under `taskrole.task.pod.spec.containers.volumeMounts`:
+
+* You configure a volumeMount name as `hostpath-volume`, which must be same as the volume under `Volumes`
+* You set a mountPath as `/mnt`, directories and files under `/data` can be accessed under `/mnt` in the container
+
+In container `hostpathstest`, it runs `ls /mnt && cat /mnt/hostpathtest.txt`, and prints out:
+
+```console
+hostpathtest.txt
+Hello, HostPath
+```
+
+#### Multiple Nodes using hostPath <a name="multinodehp"></a>
+
+You have multiple nodes on your cluster. Some nodes have the file or data, the rest of them do not have them. 
+
+For example, you have 10 nodes, only node `10.151.40.241` and node `10.151.40.242` have `hostpathtest.txt` under their `/data` directory. If you want to assign your Pod on node with `hostpathtest.txt`, you can use 
