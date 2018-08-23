@@ -152,7 +152,7 @@ users:
 
 You can check [get_ips.sh](./example/buildInitContainerImage/get_ips.sh).
 
-Then, you can build the image by
+Then, to compile your image just run:
 
 ```bash
 $ docker build -t yourInitConatinerImageName:version .
@@ -260,16 +260,19 @@ spec:
             hostNetwork: true
 ```
 
-Compared to simple Tensorflow Framework configuration file, you add *taskrole.task.pod.spec.initConatiners*, *taskrole.task.pod.spec.containers.volumeMounts*, and *taskrole.task.pod.spec.volumes*. 
+Compared to simple Tensorflow Framework configuration file, you add *taskrole.task.pod.spec.initContainers*, *taskrole.task.pod.spec.containers.volumeMounts*, and *taskrole.task.pod.spec.volumes*. 
 
 Below please find the detailed explanation for each of the parameters of initConatiners:
 
-| Field Name                       | Schema                     | Description                              |
-| :------------------------------- | :------------------------- | :--------------------------------------- |
-| `jobName`                        | String in `^[A-Za-z0-9\-._~]+$` format, required | Name for the job, need to be unique |
-| `image`                          | String, required           | URL pointing to the Docker image for all tasks in the job |
-| `authFile`                       | String, optional, HDFS URI | Docker registry authentication file existing on HDFS |
-| `dataDir`                        | String, optional, HDFS URI | Data directory existing on HDFS          |
-
-
+| Filed Name      | Description                                                                                                                                         |
+|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`          | Name of the initContainer, string in `^[a-z0-9]{1,63}$`                                                                                             |
+| `image`         | yourInitConatinerImageName:version which can pull from Dockerhub                                                                                    |
+| `ports`         | List of ports to expose from initContainer                                                                                                          |
+| `containerPort` | Number of port to expose on the pod's IP address. This must be a valid port number, `0 < x < 65536`                                                 |
+| `workingDir`    | InitContainer's working directory. If not specified, the container runtime's default will be used, which might be configured in the container image |
+| `command`       | The initContainer runs the command.                                                                                                                 |
+| `volumeMounts`  | Pod volumes to mount into the container's filesystem                                                                                                |
+| `name`          | Name of a volume, should be volume presents in `pod.spec.volumes`                                                                                   |
+| `mountPath`     | Path within the container at which the volume should be mounted                                                                                     |
 
