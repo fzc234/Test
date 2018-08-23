@@ -262,6 +262,15 @@ spec:
 
 Compared to simple Tensorflow Framework configuration file, you add *taskrole.task.pod.spec.initConatiners*, *taskrole.task.pod.spec.containers.volumeMounts*, and *taskrole.task.pod.spec.volumes*. 
 
+Below please find the detailed explanation for each of the parameters of initConatiners:
+
+| initContainers                              |
+| Field Name                       | Schema                     | Description                              |
+| :------------------------------- | :------------------------- | :--------------------------------------- |
+| `jobName`                        | String in `^[A-Za-z0-9\-._~]+$` format, required | Name for the job, need to be unique |
+| `image`                          | String, required           | URL pointing to the Docker image for all tasks in the job |
+| `authFile`                       | String, optional, HDFS URI | Docker registry authentication file existing on HDFS |
+| `dataDir`                        | String, optional, HDFS URI | Data directory existing on HDFS          |
 
 
 
