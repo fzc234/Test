@@ -262,7 +262,7 @@ spec:
 
 Compared to simple Tensorflow Framework configuration file, you add *taskrole.task.pod.spec.initContainers*, *taskrole.task.pod.spec.containers.volumeMounts*, and *taskrole.task.pod.spec.volumes*. 
 
-Below please find the detailed explanation for each of the parameters of initConatiners:
+Below please find the detailed explanation for each of the parameters of `initConatiners`:
 
 | Filed Name      | Description                                                                                                                                         |
 |-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -271,8 +271,18 @@ Below please find the detailed explanation for each of the parameters of initCon
 | `ports`         | List of ports to expose from initContainer                                                                                                          |
 | `containerPort` | Number of port to expose on the pod's IP address. This must be a valid port number, `0 < x < 65536`                                                 |
 | `workingDir`    | InitContainer's working directory. If not specified, the container runtime's default will be used, which might be configured in the container image |
-| `command`       | The initContainer runs the command.                                                                                                                 |
+| `command`       | The initContainer runs the command in Docker image.                                                                                                 |
 | `volumeMounts`  | Pod volumes to mount into the container's filesystem                                                                                                |
 | `name`          | Name of a volume, should be volume presents in `pod.spec.volumes`                                                                                   |
 | `mountPath`     | Path within the container at which the volume should be mounted                                                                                     |
+
+In above example, `taskrole: worker` and `taskrole: ps` have the same configuration except `containerPort`. 
+
+For `initContainer`:
+
+* It has name `initips`
+* It use image [`zichengfang/k8s_initcontainer:update`](https://hub.docker.com/r/zichengfang/k8s_initcontainer/tags/), which can be built by [steps](#dockerimginitcontainer) above
+* It mounts the shared Volume at `/configdir`
+* In the command part:
+    * 
 
