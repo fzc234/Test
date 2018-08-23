@@ -46,7 +46,7 @@ Here is one sample Tensorflow Framework configuration file:
 apiVersion: launcher.microsoft.com/v1
 kind: Framework
 metadata:
-  name: tf-example
+  name: tfexample
 spec:
   description: "tf example"
   executionType: Start
@@ -174,7 +174,7 @@ Here is the configuration file for the Pod:
 apiVersion: launcher.microsoft.com/v1
 kind: Framework
 metadata:
-  name: tf-example
+  name: tfexample
 spec:
   description: "tf example"
   executionType: Start
@@ -260,7 +260,7 @@ spec:
             hostNetwork: true
 ```
 
-Compared to simple Tensorflow Framework configuration file, you add *taskrole.task.pod.spec.initContainers*, *taskrole.task.pod.spec.containers.volumeMounts*, and *taskrole.task.pod.spec.volumes*. 
+Compared to simple Tensorflow Framework configuration file, you add `taskrole.task.pod.spec.initContainers`, `taskrole.task.pod.spec.containers.volumeMounts`, and `taskrole.task.pod.spec.volumes`. 
 
 Below please find the detailed explanation for each of the parameters of `initConatiners`:
 
@@ -357,3 +357,77 @@ Now you finish setting up your NFS server, you can put directories and data unde
 
 #### Mount on NFS Volume <a name="nfsmount"></a>
 
+You have already set up your own NFS server, and you can configure a Pod to mount an NFS share by `nfs` volume.
+
+Suppose on NFS server, you create a `nfstest.txt` under `/home/t-zifang/nfs`, and you insert some words:
+
+```console
+$ cd /home/t-zifang/nfs
+$ echo Hello, NFS > nfstest.txt
+```
+
+You want to config a Pod to use `nfs` volume to mount NFS server and read `nfstest.txt`.
+
+Here is the example how to use `nfs` volume:
+
+```yaml
+apiVersion: launcher.microsoft.com/v1
+kind: Framework
+metadata:
+  name: nfsexample
+spec:
+  description: "tf example"
+  executionType: Start
+  retryPolicy:
+    fancyRetryPolicy: false
+    maxRetryCount: 3
+  taskRoles:
+    - name: worker
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: nfstest
+                image: "zichengfang/k8s_launcher:distributedtf"
+                ports:
+                - containerPort: 49866
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","ls /mnt && cat /mnt/nfstest.txt"]
+                volumeMounts:
+                  - name: nfs-volume
+                    mountPath: /mnt
+            volumes:
+              - name: nfs-volume
+                nfs:
+                server: 10.169.4.12
+                path: /home/t-zifang/nfs
+            hostNetwork: true
+```
+
+Under `taskrole.task.pod.spec.volumes`:
+
+* You configure a volume name as `nfs-volume`
+* You set the volume type as `nfs`
+* You provide the NFS server IP `10.169.4.12`
+* You provide the NFS shared directory path `/home/t-zifang/nfs`
+
+Under `taskrole.task.pod.spec.containers.volumeMounts`:
+
+* You configure a volumeMount name as `nfs-volume`, which must be same as the volume under `Volumes`
+* You set a mountPath as `/mnt`
+
+In container `nfstest`, you run `ls /mnt && cat /mnt/nfstest.txt`, it will print out:
+```console
+nfstext.txt
+Hello, NFS
+```
+
+The directories and data under `/home/t-zifang/nfs` can be accessed under `/mnt` in the container.
