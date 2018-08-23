@@ -262,7 +262,7 @@ spec:
             hostNetwork: true
 ```
 
-Compared to simple Tensorflow Framework configuration file, you add `taskrole.task.pod.spec.initContainers`, `taskrole.task.pod.spec.containers.volumeMounts`, and `taskrole.task.pod.spec.volumes`. 
+Compared to simple Tensorflow Framework configuration file, you add `taskRole.task.pod.spec.initContainers`, `taskRole.task.pod.spec.containers.volumeMounts`, and `taskRole.task.pod.spec.volumes`. 
 
 Below please find the detailed explanation for each of the parameters of `initConatiners`:
 
@@ -278,7 +278,7 @@ Below please find the detailed explanation for each of the parameters of `initCo
 | `name`          | Name of a volume, should be volume presents in `pod.spec.volumes`                                                                                   |
 | `mountPath`     | Path within the container at which the volume should be mounted                                                                                     |
 
-In above example, `taskrole: worker` and `taskrole: ps` have the same configuration except `containerPort`. 
+In above example, `taskRole: worker` and `taskRole: ps` have the same configuration except `containerPort`. 
 
 For `initContainer`:
 
@@ -370,7 +370,7 @@ $ echo Hello, NFS > nfstest.txt
 
 You can config a Pod to use `nfs` volume to mount NFS server and read `nfstest.txt`.
 
-Here is the example how to use `nfs` volume:
+Here is the example to use `nfs` volume:
 
 ```yaml
 apiVersion: launcher.microsoft.com/v1
@@ -414,14 +414,14 @@ spec:
             hostNetwork: true
 ```
 
-Under `taskrole.task.pod.spec.volumes`:
+Under `taskRole.task.pod.spec.volumes`:
 
 * You configure a volume name as `nfs-volume`
 * You set the volume type as `nfs`
 * You provide the NFS server IP `10.169.4.12`
 * You provide the NFS shared directory path `/home/t-zifang/nfs`
 
-Under `taskrole.task.pod.spec.containers.volumeMounts`:
+Under `taskRole.task.pod.spec.containers.volumeMounts`:
 
 * You configure a volumeMount name as `nfs-volume`, which must be same as the volume under `Volumes`
 * You set a mountPath as `/mnt`, directories and files under `/home/t-zifang/nfs` can be accessed under `/mnt` in the container
@@ -450,7 +450,7 @@ $ echo Hello, HostPath > hostpathtest.txt
 
 You can config a Pod to use `hostPath` volume to mount and read `hostpathtest.txt`.
 
-Here is the example how to use `hostPath` volume:
+Here is the example to use `hostPath` volume:
 
 ```yaml
 apiVersion: launcher.microsoft.com/v1
@@ -482,7 +482,7 @@ spec:
                 ports:
                 - containerPort: 49866
                 workingDir: /benchmarks/scripts/tf_cnn_benchmarks
-                command: ["/bin/bash","-c","ls /mnt && cat /mnt/hostpathtest.txt"]
+                command: ["/bin/bash","-c","ls /mnt/hostpathdir && cat /mnt/hostpathdir/hostpathtest.txt"]
                 volumeMounts:
                   - name: hostpath-volume
                     mountPath: /mnt
@@ -493,18 +493,18 @@ spec:
             hostNetwork: true
 ```
 
-Under `taskrole.task.pod.spec.volumes`:
+Under `taskRole.task.pod.spec.volumes`:
 
 * You configure a volume name as `hostpath-volume`
 * You set the volume type as `hostPath`
 * You provide the directory path on node `/data`
 
-Under `taskrole.task.pod.spec.containers.volumeMounts`:
+Under `taskRole.task.pod.spec.containers.volumeMounts`:
 
 * You configure a volumeMount name as `hostpath-volume`, which must be same as the volume under `Volumes`
 * You set a mountPath as `/mnt`, directories and files under `/data` can be accessed under `/mnt` in the container
 
-In container `hostpathstest`, it runs `ls /mnt && cat /mnt/hostpathtest.txt`, and prints out:
+In container `hostpathstest`, it runs `ls /mnt/hostpathdir && cat /mnt/hostpathdir/hostpathtest.txt`, and prints out:
 
 ```console
 hostpathtest.txt
@@ -513,6 +513,78 @@ Hello, HostPath
 
 #### Multiple Nodes using hostPath <a name="multinodehp"></a>
 
-You have multiple nodes on your cluster. Some nodes have the file or data, the rest of them do not have them. 
+You have multiple nodes on your cluster. Some nodes have file or data, the rest of them do not have. 
 
-For example, you have 10 nodes, only node `10.151.40.241` and node `10.151.40.242` have `hostpathtest.txt` under their `/data` directory. If you want to assign your Pod on node with `hostpathtest.txt`, you can use 
+For example, you have 10 nodes, only node `10.151.40.241` and node `10.151.40.242` have `hostpathtest.txt` under their `/data` directory. If you want to assign your Pod on node with `hostpathtest.txt`, you can configure [nodeAffinity](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/) for Pod to constrain a Pod to only be able to run on particular nodes.
+
+*Nodes have labels, in test cluster, nodes have labels `kubernetes.io/hostname`, and values are `10.151.40.241`, `10.151.40.242`, `...`* 
+
+Here is the example to use hostPath on cluster with multiple nodes and assign Pod to particular nodes:
+
+```yaml
+apiVersion: launcher.microsoft.com/v1
+kind: Framework
+metadata:
+  name: hostpathexample
+spec:
+  description: "tf example"
+  executionType: Start
+  retryPolicy:
+    fancyRetryPolicy: false
+    maxRetryCount: 3
+  taskRoles:
+    - name: worker
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values:
+                      - 10.151.40.241
+                      - 10.151.40.242
+            restartPolicy: Never
+            containers:
+              - name: hostpathstest
+                image: "zichengfang/k8s_launcher:distributedtf"
+                ports:
+                - containerPort: 49866
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","ls /mnt/hostpathdir && cat /mnt/hostpathdir/hostpathtest.txt"]
+                volumeMounts:
+                  - name: hostpath-volume
+                    mountPath: /mnt
+            volumes:
+              - name: hostpath-volume
+                hostPath:
+                  path: /data
+            hostNetwork: true
+```
+
+Compared to configuration for single node, you need to add `affinity` under `taskRole.task.pod.spec`:
+
+* You need to configure affinity type as `nodeAffinity`
+* You need to configure `nodeAffinity` type as `requiredDuringSchedulingIgnoredDuringExecution`, which would "only run the Pod on nodes that matches the `matchExpression`"
+* You need to configure `nodeSelectorTerms`
+* You need to configure `matchExpressions` with `key: kubernetes.io/hostname`, `operator: In`, `values:` `- 10.151.40.241` `- 10.151.40.242`
+* This node affinity rule says that the Pod can only be assigned to a node with a label whose key is `kubernetes.io/hostname` and whose value is either `10.151.40.241` or `10.151.40.242`
+
+In container `hostpathstest`, it runs `ls /mnt/hostpathdir && cat /mnt/hostpathdir/hostpathtest.txt`, and prints out:
+
+```console
+hostpathtest.txt
+Hello, HostPath
+```
+
+If we have 10 nodes on cluster and submit Framework without `nodeAffinity`, the Pod might be assigned to node other than `10.151.40.241` and `10.151.40.242`, such as `10.151.40.243`, you will not find and read `hostpathtest.txt`.
