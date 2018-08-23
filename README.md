@@ -284,5 +284,5 @@ For `initContainer`:
 * It use image [`zichengfang/k8s_initcontainer:update`](https://hub.docker.com/r/zichengfang/k8s_initcontainer/tags/), which can be built by [steps](#dockerimginitcontainer) above
 * It mounts the shared Volume at `/configdir`
 * In the command part:
-    * 
-
+    - First, export four environment variables, which will be used by `get_ips.sh`. `worker_tasknum=1`, it has 1 `worker`; `ps_tasknum=1`, it has 1 `ps`; `worker_port=46866`, the port exposed by `worker`; `ps_port=46867`, the port exposed by `ps`.
+    - Second, run `source ./get_ips.sh`, it can 
