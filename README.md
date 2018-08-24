@@ -34,6 +34,9 @@ This guide introduces how to submit deep learning frameworks by framework launch
   - [Configure a Pod to Use hostPath Volume](#hostpathvolume)
     - [Single Node using hostPath](#singlenodehp)
     - [Multiple Nodes using hostPath](#multinodehp)
+  - [Tensorflow Framework Examples](#tfexamples)
+    - [Tensorflow Framework using NFS](#tfnfs)
+    - [Tensorflow Framework using hostPath](#tfhostpath)
 
 
 ## Simple Tensorflow Framework Example <a name="simpletf"></a>
@@ -515,7 +518,7 @@ Hello, HostPath
 
 You have multiple nodes on your cluster. Some nodes have file or data, the rest of them do not have. 
 
-For example, you have 10 nodes, only node `10.151.40.241` and node `10.151.40.242` have `hostpathtest.txt` under their `/data` directory. If you want to assign your Pod on node with `hostpathtest.txt`, you can configure [nodeAffinity](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/) for Pod to constrain a Pod to only be able to run on particular nodes.
+For example, you have 10 nodes, only node `10.151.40.241` and node `10.151.40.242` have `hostpathtest.txt` under their `/data/hostpathdir` directory. If you want to assign your Pod on node with `hostpathtest.txt`, you can configure [nodeAffinity](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/) for Pod to constrain a Pod to only be able to run on particular nodes.
 
 *Nodes have labels, in test cluster, nodes have labels `kubernetes.io/hostname`, and values are `10.151.40.241`, `10.151.40.242`, `...`* 
 
@@ -588,3 +591,121 @@ Hello, HostPath
 ```
 
 If we have 10 nodes on cluster and submit Framework without `nodeAffinity`, the Pod might be assigned to node other than `10.151.40.241` and `10.151.40.242`, such as `10.151.40.243`, you will not find and read `hostpathtest.txt`.
+
+### Tensorflow Framework Examples <a name="tfexamples"></a>
+
+In this part, we will show examples how to submit Tensorflow Frameworks by framework launcher on Kubernetes.
+
+In following examples, we will deploy Tensorflow Framework using [Tensorflow CNN benchmarks](https://github.com/tensorflow/benchmarks):
+
+* Deploy 1 `worker` and 1 `ps` 
+* In application containers, it use image `zichengfang/k8s_launcher:distributedtf`, which can run `benchmarks` script
+* In initContainers, it use image `zichengfang/k8s_initcontainer:update`, which can run `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables
+* Tensorflow CNN Benchmarks need to use data, examples use `cifar10` data, which can be downloaded [here](https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz)
+
+In order to use `cifar10` data, we need to use `volume` to mount data. We will show how to use `nfs` volume and `hostPath` volume.
+
+#### Tensorflow Framework using NFS <a name="tfnfs"></a>
+
+Here is the example configuration to deploy Tensorflow Framework using NFS:
+
+```yaml
+apiVersion: launcher.microsoft.com/v1
+kind: Framework
+metadata:
+  name: tfexample
+spec:
+  description: "tf example"
+  executionType: Start
+  retryPolicy:
+    fancyRetryPolicy: false
+    maxRetryCount: 3
+  taskRoles:
+    - name: worker
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: tf
+                # image: yourtensorflowjobimage:version
+                image: zichengfang/k8s_launcher:distributedtf     
+                ports:
+                - containerPort: 49866
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","export worker_hosts=$(head -n 1 /configdir/configfile) && export ps_hosts=$(tail -n 1 /configdir/configfile) && python tf_cnn_benchmarks.py --batch_size=32 --model=alexnet --local_parameter_device=cpu --variable_update=parameter_server --ps_hosts=$ps_hosts --worker_hosts=$worker_hosts --job_name=worker --task_index=$taskindex --data_name=cifar10 --data_dir=/mnt/cifar-10-batches-py/ --data_format=NHWC"]
+                olumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+                  - name: data-volume
+                    mountPath: /mnt
+            initContainers:
+              - name: initips
+                # image: yourInitConatinerImageName:version
+                image: zichengfang/k8s_initcontainer:update            
+                ports:
+                - containerPort: 49866
+                workingDir: /
+                command: ["/bin/bash","-c","export worker_tasknum=1 && export ps_tasknum=1 && export ps_port=46867 && export worker_port=46866 && source ./get_ips.sh && echo -e $worker_hosts'\n'$ps_hosts > /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            volumes:
+              - name: config-volume
+                emptyDir: {}
+              - name: data-volume
+                nfs:
+                  server: 10.169.4.12
+                  path: /home/t-zifang/nfs
+            hostNetwork: true
+    - name: ps
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: tf
+                # image: yourtensorflowjobimage:version
+                image: zichengfang/k8s_launcher:distributedtf
+                ports:
+                - containerPort: 49867
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","export worker_hosts=$(head -n 1 /configdir/configfile) && export ps_hosts=$(tail -n 1 /configdir/configfile) && python tf_cnn_benchmarks.py --batch_size=32 --model=alexnet --local_parameter_device=cpu --variable_update=parameter_server --ps_hosts=$ps_hosts --worker_hosts=$worker_hosts --job_name=ps --task_index=$taskindex --data_name=cifar10"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            initContainers:
+              - name: initips
+                # image: yourInitConatinerImageName:version
+                image: zichengfang/k8s_initcontainer:update
+                ports:
+                - containerPort: 49867
+                workingDir: /
+                command: ["/bin/bash","-c","export worker_tasknum=1 && export ps_tasknum=1 && export ps_port=46867 && export worker_port=46866 && source ./get_ips.sh && echo -e $worker_hosts'\n'$ps_hosts > /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            volumes:
+              - name: config-volume
+                emptyDir: {}
+            hostNetwork: true
+```
+
+For taskRole `ps`:
+
+* Pod has 1 application container `tf`, 1 initContainer `initips`, 1 `emptyDir` type volume `config-volume`
+* 
