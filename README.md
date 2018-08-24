@@ -598,7 +598,7 @@ In this part, we will show examples how to submit Tensorflow Frameworks by frame
 
 In following examples, we will deploy Tensorflow Framework using [Tensorflow CNN benchmarks](https://github.com/tensorflow/benchmarks):
 
-* Deploy 1 `worker` and 1 `ps` 
+* Deploy one `worker` and one `ps` 
 * In application containers, it use image `zichengfang/k8s_launcher:distributedtf`, which can run `benchmarks` scripts
 * In initContainers, it use image `zichengfang/k8s_initcontainer:update`, which can run `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables
 * Tensorflow CNN Benchmarks need to use data, examples use `cifar10` data, which can be downloaded [here](https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz)
@@ -707,9 +707,12 @@ spec:
 
 For taskRole `ps`:
 
-* Pod has 1 application container `tf`, 1 initContainer `initips`, 1 `emptyDir` type volume `config-volume`
-* [`emptyDir`](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node. Application containers and initContainers in the Pod can all read and write the same files in the `emptyDir` volume
-* Application container `tf` and initContainer `initips` both have a volume mount on `config-volume` with path `/configdir`
-* InitContainer `initips` runs `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables, then write these two variables into `configfile` under `/configdir`
-* Application container `tf` can read `/configdir/configfile`, and export `$worker_hosts` and `$ps_hosts`, which will be used as parameters for `tf_cnn_benchmarks.py`
-* 
+- Pod has one application container `tf`, one initContainer `initips`, one `emptyDir` type volume `config-volume`
+- [`emptyDir`](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node. Application containers and initContainers in the Pod can all read and write the same files in the `emptyDir` volume
+- Application container `tf` and initContainer `initips` both have a volume mount on `config-volume` with path `/configdir`
+- InitContainer `initips` runs `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables, then write these two variables into `configfile` under `/configdir`
+- Application container `tf` can read `/configdir/configfile`, and export `$worker_hosts` and `$ps_hosts`, which will be used as parameters for `tf_cnn_benchmarks.py`
+- Application container run `python tf_cnn_benchmarks.py` using parameters `--batch_size=32`, `--model=alexnet`, `--local_parameter_device=cpu`, `--variable_update=parameter_server`, `--ps_hosts=$ps_hosts`, `--worker_hosts=$worker_hosts`, **`--job_name=ps`**, `--task_index=$taskindex`, `--data_name=cifar10`
+
+For taskRole `worker`:
+
