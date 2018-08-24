@@ -157,7 +157,7 @@ users:
 
 You can check [get_ips.sh](./example/buildInitContainerImage/get_ips.sh).
 
-Then, to compile your image just run:
+Then, to build your image just run:
 
 ```bash
 $ docker build -t yourInitConatinerImageName:version .
@@ -601,9 +601,9 @@ In following examples, we will deploy Tensorflow Framework using [Tensorflow CNN
 * Deploy one `worker` and one `ps` 
 * In application containers, it use image `zichengfang/k8s_launcher:distributedtf`, which can run `benchmarks` scripts
 * In initContainers, it use image `zichengfang/k8s_initcontainer:update`, which can run `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables
-* Tensorflow CNN Benchmarks need to use data, examples use `cifar10` data, which can be downloaded [here](https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz)
+* Tensorflow CNN Benchmarks need to use data, examples use `cifar-10` data, which can be downloaded [here](https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz)
 
-In order to use `cifar10` data, we need to use `volume` to mount data. We will show how to use `nfs` volume and `hostPath` volume.
+In order to use `cifar-10` data, we need to use `volume` to mount data. We will show how to use `nfs` volume and `hostPath` volume.
 
 #### Tensorflow Framework using NFS <a name="tfnfs"></a>
 
@@ -707,12 +707,136 @@ spec:
 
 For taskRole `ps`:
 
-- Pod has one application container `tf`, one initContainer `initips`, one `emptyDir` type volume `config-volume`
-- [`emptyDir`](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node. Application containers and initContainers in the Pod can all read and write the same files in the `emptyDir` volume
-- Application container `tf` and initContainer `initips` both have a volume mount on `config-volume` with path `/configdir`
-- InitContainer `initips` runs `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables, then write these two variables into `configfile` under `/configdir`
-- Application container `tf` can read `/configdir/configfile`, and export `$worker_hosts` and `$ps_hosts`, which will be used as parameters for `tf_cnn_benchmarks.py`
-- Application container run `python tf_cnn_benchmarks.py` using parameters `--batch_size=32`, `--model=alexnet`, `--local_parameter_device=cpu`, `--variable_update=parameter_server`, `--ps_hosts=$ps_hosts`, `--worker_hosts=$worker_hosts`, **`--job_name=ps`**, `--task_index=$taskindex`, `--data_name=cifar10`
+* Pod has one application container `tf`, one initContainer `initips`, one volume `config-volume` of `emptyDir` type
+* [`emptyDir`](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node. Application containers and initContainers in the Pod can all read and write the same files in the `emptyDir` volume
+* Application container `tf` and initContainer `initips` both have a volume mount on `config-volume` with path `/configdir`
+* InitContainer `initips` runs `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables, then write these two variables into `configfile` under `/configdir`
+* Application container `tf` can read `/configdir/configfile`, and export `$worker_hosts` and `$ps_hosts`, which will be used as parameters for `tf_cnn_benchmarks.py`
+* Application container run `python tf_cnn_benchmarks.py` using parameters `--batch_size=32`, `--model=alexnet`, `--local_parameter_device=cpu`, `--variable_update=parameter_server`, `--ps_hosts=$ps_hosts`, `--worker_hosts=$worker_hosts`, **`--job_name=ps`**, `--task_index=$taskindex`, `--data_name=cifar10`
 
 For taskRole `worker`:
 
+* Pod has one application container `tf`, one initContainer `initips`, one volume `config-volume` of `emptyDir` type, and one volume `data-volume` of `nfs` type
+* Download `cifar-10` data and save into directory `cifar-10-batches-py` under `/home/t-zifang/nfs` in NFS server [(how to set up NFS server and share directory)](#nfsvolume)
+* InitContainer `initips` has a volume mount on `config-volume` with path `/configdir` to write `configfile`
+* Application container `tf` has a volume mount on `config-volume` with path `/configdir` to read `configfile` and a volume mount on `data-volume` with path `/mnt` to access `cifar-10` data. `worker` needs `cifar-10`, `ps` does not need. Therefore, only `worker` application container mounts on volume with `cifar-10` data
+* InitContainer `initips` runs `get_ips.sh` to get `worker` and `ps` hostIps list and export them as environment variables, then write these two variables into `configfile` under `/configdir`
+* Application container `tf` can read `/configdir/configfile`, and export `$worker_hosts` and `$ps_hosts`, which will be used as parameters for `tf_cnn_benchmarks.py`
+* Application container run `python tf_cnn_benchmarks.py` using parameters `--batch_size=32`, `--model=alexnet`, `--local_parameter_device=cpu`, `--variable_update=parameter_server`, `--ps_hosts=$ps_hosts`, `--worker_hosts=$worker_hosts`, **`--job_name=worker`**, `--task_index=$taskindex`, `--data_name=cifar10`, **`--data_dir=/mnt/cifar-10-batches-py/`**, `--data_format=NHWC`
+
+#### Tensorflow Framework using hostPath <a name="tfhostpath"></a>
+
+Here is the example configuration to deploy Tensorflow Framework using hostPath:
+
+```yaml
+apiVersion: launcher.microsoft.com/v1
+kind: Framework
+metadata:
+  name: tfexample
+spec:
+  description: "tf example"
+  executionType: Start
+  retryPolicy:
+    fancyRetryPolicy: false
+    maxRetryCount: 3
+  taskRoles:
+    - name: worker
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                  - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values:
+                      - 10.151.40.241
+                      - 10.151.40.242
+            restartPolicy: Never
+            containers:
+              - name: tf
+                # image: yourtensorflowjobimage:version
+                image: zichengfang/k8s_launcher:distributedtf     
+                ports:
+                - containerPort: 49866
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","export worker_hosts=$(head -n 1 /configdir/configfile) && export ps_hosts=$(tail -n 1 /configdir/configfile) && python tf_cnn_benchmarks.py --batch_size=32 --model=alexnet --local_parameter_device=cpu --variable_update=parameter_server --ps_hosts=$ps_hosts --worker_hosts=$worker_hosts --job_name=worker --task_index=$taskindex --data_name=cifar10 --data_dir=/mnt/cifar-10-batches-py/ --data_format=NHWC"]
+                olumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+                  - name: data-volume
+                    mountPath: /mnt
+            initContainers:
+              - name: initips
+                # image: yourInitConatinerImageName:version
+                image: zichengfang/k8s_initcontainer:update            
+                ports:
+                - containerPort: 49866
+                workingDir: /
+                command: ["/bin/bash","-c","export worker_tasknum=1 && export ps_tasknum=1 && export ps_port=46867 && export worker_port=46866 && source ./get_ips.sh && echo -e $worker_hosts'\n'$ps_hosts > /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            volumes:
+              - name: config-volume
+                emptyDir: {}
+              - name: data-volume
+                hostPath:
+                  path: /data
+            hostNetwork: true
+    - name: ps
+      taskNumber: 1
+      frameworkAttemptCompletionPolicy:
+        minFailedTaskCount: 1
+        minSucceededTaskCount: -1
+      task:
+        retryPolicy:
+          fancyRetryPolicy: false
+          maxRetryCount: 3
+        pod:
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: tf
+                # image: yourtensorflowjobimage:version
+                image: zichengfang/k8s_launcher:distributedtf
+                ports:
+                - containerPort: 49867
+                workingDir: /benchmarks/scripts/tf_cnn_benchmarks
+                command: ["/bin/bash","-c","export worker_hosts=$(head -n 1 /configdir/configfile) && export ps_hosts=$(tail -n 1 /configdir/configfile) && python tf_cnn_benchmarks.py --batch_size=32 --model=alexnet --local_parameter_device=cpu --variable_update=parameter_server --ps_hosts=$ps_hosts --worker_hosts=$worker_hosts --job_name=ps --task_index=$taskindex --data_name=cifar10"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            initContainers:
+              - name: initips
+                # image: yourInitConatinerImageName:version
+                image: zichengfang/k8s_initcontainer:update
+                ports:
+                - containerPort: 49867
+                workingDir: /
+                command: ["/bin/bash","-c","export worker_tasknum=1 && export ps_tasknum=1 && export ps_port=46867 && export worker_port=46866 && source ./get_ips.sh && echo -e $worker_hosts'\n'$ps_hosts > /configdir/configfile"]
+                volumeMounts:
+                  - name: config-volume
+                    mountPath: /configdir
+            volumes:
+              - name: config-volume
+                emptyDir: {}
+            hostNetwork: true
+```
+
+TaskRole `ps` has the same configuration as Tensorflow Framework using NFS volume.
+
+Different configurations for taskRole `worker`:
+
+* Configure `pod.spec` with `affinity`, Pod can only be assigned to a node with a label whose key is `kubernetes.io/hostname` and whose value is either `10.151.40.241` or `10.151.40.242`, which contain `cifar-10` data under `/data/cifar-10-batches-py` (if your cluster with only one node, you do not need use `affinity`, see [here](#hostpathvolume))
+* Pod has one volume `data-volume` of `hostPath` type instead of `nfs`
+* Application container `tf` has a volume mount on `config-volume` with path `/configdir` to read `configfile` and a volume mount on `data-volume` with path `/mnt` to access `cifar-10` data
